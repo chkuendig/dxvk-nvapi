@@ -678,10 +678,17 @@ NVAPI_FUNCTION NvAPI_GPU_CudaEnumComputeCapableGpus(NV_COMPUTE_GPU_TOPOLOGY* pCo
     if (pComputeTopo->version != NV_COMPUTE_GPU_TOPOLOGY_VER1)
         return IncompatibleStructVersion(n, pComputeTopo->version);
 
+    // ZLUDA-Physx: When DXVK_NVAPI_ALLOW_OTHER_DRIVERS=1, non-NVIDIA
+    // adapters are already in the registry (filtered by NvapiAdapter init)
+    // and report a Pascal architecture by default — they are CUDA-capable
+    // via ZLUDA, so include them. Batman: Arkham Knight's PhysXDevice64
+    // probe greys out the in-game PhysX option when this list is empty.
+    auto allowOtherDrivers = env::getEnvVariable("DXVK_NVAPI_ALLOW_OTHER_DRIVERS") == "1";
     auto cudaCapableGpus = std::vector<NvPhysicalGpuHandle>(0);
     for (auto i = 0U; i < nvapiAdapterRegistry->GetAdapterCount(); i++) {
         auto adapter = nvapiAdapterRegistry->GetAdapter(i);
-        if (!adapter->HasNvProprietaryDriver() || adapter->GetArchitectureId() < NV_GPU_ARCHITECTURE_GM000) // Maxwell is the oldest generation we can detect
+        auto driverOk = adapter->HasNvProprietaryDriver() || allowOtherDrivers;
+        if (!driverOk || adapter->GetArchitectureId() < NV_GPU_ARCHITECTURE_GM000) // Maxwell is the oldest generation we can detect
             continue;
 
         cudaCapableGpus.push_back(reinterpret_cast<NvPhysicalGpuHandle>(adapter));
