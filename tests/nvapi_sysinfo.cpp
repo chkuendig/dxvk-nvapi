@@ -281,7 +281,7 @@ TEST_CASE("Sysinfo methods succeed", "[.sysinfo]") {
         };
         auto args = GENERATE(
             Data{VK_DRIVER_ID_NVIDIA_PROPRIETARY, VK_NV_VIEWPORT_ARRAY2_EXTENSION_NAME, 1},
-            Data{VK_DRIVER_ID_MESA_RADV, VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME, 0},
+            Data{VK_DRIVER_ID_MESA_RADV, VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME, 1},
             Data{VK_DRIVER_ID_NVIDIA_PROPRIETARY, "ext", 0});
 
         ::SetEnvironmentVariableA("DXVK_NVAPI_ALLOW_OTHER_DRIVERS", "1");
@@ -315,10 +315,27 @@ TEST_CASE("Sysinfo methods succeed", "[.sysinfo]") {
             }
         }
 
-        SECTION("CudaEnumComputeCapableGpus (V2) returns incompatible-struct-version") {
-            NV_COMPUTE_GPU_TOPOLOGY_V2 gpuTopology;
+        SECTION("CudaEnumComputeCapableGpus (V2) ignores uninitialized outputs") {
+            NV_COMPUTE_GPU_TOPOLOGY_V2 gpuTopology{};
             gpuTopology.version = NV_COMPUTE_GPU_TOPOLOGY_VER;
-            REQUIRE(NvAPI_GPU_CudaEnumComputeCapableGpus(&gpuTopology) == NVAPI_INCOMPATIBLE_STRUCT_VERSION);
+            gpuTopology.gpuCount = 0xdeadbeef;
+            gpuTopology.computeGpus = reinterpret_cast<NV_COMPUTE_GPU*>(1);
+            REQUIRE(NvAPI_GPU_CudaEnumComputeCapableGpus(&gpuTopology) == NVAPI_OK);
+            REQUIRE(gpuTopology.gpuCount == args.cudaGpuCount);
+            REQUIRE(gpuTopology.computeGpus);
+            if (gpuTopology.gpuCount) {
+                REQUIRE(gpuTopology.computeGpus[0].hPhysicalGpu == handle);
+                REQUIRE(gpuTopology.computeGpus[0].flags == 0x21001b);
+            }
+        }
+        SECTION("CudaEnumComputeCapableGpus (V2) provides null-array storage") {
+            NV_COMPUTE_GPU_TOPOLOGY_V2 gpuTopology{};
+            gpuTopology.version = NV_COMPUTE_GPU_TOPOLOGY_VER;
+            REQUIRE(NvAPI_GPU_CudaEnumComputeCapableGpus(&gpuTopology) == NVAPI_OK);
+            REQUIRE(gpuTopology.gpuCount == args.cudaGpuCount);
+            REQUIRE(gpuTopology.computeGpus);
+            if (gpuTopology.gpuCount)
+                REQUIRE(gpuTopology.computeGpus[0].hPhysicalGpu == handle);
         }
     }
 

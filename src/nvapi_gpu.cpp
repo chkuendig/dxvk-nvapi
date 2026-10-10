@@ -675,7 +675,7 @@ NVAPI_FUNCTION NvAPI_GPU_CudaEnumComputeCapableGpus(NV_COMPUTE_GPU_TOPOLOGY* pCo
     if (!pComputeTopo)
         return InvalidArgument(n);
 
-    if (pComputeTopo->version != NV_COMPUTE_GPU_TOPOLOGY_VER1)
+    if (pComputeTopo->version != NV_COMPUTE_GPU_TOPOLOGY_VER1 && pComputeTopo->version != NV_COMPUTE_GPU_TOPOLOGY_VER)
         return IncompatibleStructVersion(n, pComputeTopo->version);
 
     // ZLUDA-Physx: When DXVK_NVAPI_ALLOW_OTHER_DRIVERS=1, non-NVIDIA
@@ -701,10 +701,28 @@ NVAPI_FUNCTION NvAPI_GPU_CudaEnumComputeCapableGpus(NV_COMPUTE_GPU_TOPOLOGY* pCo
         case NV_COMPUTE_GPU_TOPOLOGY_VER1: {
             auto pComputeTopoV1 = reinterpret_cast<NV_COMPUTE_GPU_TOPOLOGY_V1*>(pComputeTopo);
             pComputeTopoV1->gpuCount = cudaCapableGpus.size();
+            if (cudaCapableGpus.size() > NVAPI_MAX_GPU_PER_TOPOLOGY)
+                return InsufficientBuffer(n);
             for (auto i = 0U; i < cudaCapableGpus.size(); i++) {
                 pComputeTopoV1->computeGpus[i].hPhysicalGpu = cudaCapableGpus[i];
                 pComputeTopoV1->computeGpus[i].flags = flags;
             }
+            break;
+        }
+        case NV_COMPUTE_GPU_TOPOLOGY_VER: {
+            // V2 returns driver-owned storage, as in ZLUDA's NVAPI path.
+            // PhysX initializes only version: gpuCount/computeGpus are outputs
+            // and may contain arbitrary bits. Never dereference the input pointer.
+            static thread_local NV_COMPUTE_GPU returnedGpus[NVAPI_MAX_PHYSICAL_GPUS];
+            pComputeTopo->gpuCount = cudaCapableGpus.size();
+            if (cudaCapableGpus.size() > NVAPI_MAX_PHYSICAL_GPUS)
+                return InsufficientBuffer(n);
+            for (auto i = 0U; i < cudaCapableGpus.size(); i++) {
+                returnedGpus[i].hPhysicalGpu = cudaCapableGpus[i];
+                returnedGpus[i].flags = flags | NV_COMPUTE_GPU_TOPOLOGY_CUDA_AVAILABLE
+                    | NV_COMPUTE_GPU_TOPOLOGY_CUDA_CAPABLE | NV_COMPUTE_GPU_TOPOLOGY_PHYSICS_AVAILABLE;
+            }
+            pComputeTopo->computeGpus = returnedGpus;
             break;
         }
         default:
