@@ -11,6 +11,22 @@ static const auto disabled = str::split<std::set<std::string_view, str::CaseInse
 
 static std::once_flag logDisabledOnceFlag;
 
+// Legacy PhysX also asks for this private V2-only entry point. ZLUDA's
+// NVAPI implementation accepts it without inspecting the version field.
+// Reuse the checked public enumerator and its driver-owned output storage.
+static NvAPI_Status __cdecl physxComputeTopologyV2(NV_COMPUTE_GPU_TOPOLOGY* output) {
+    if (!output)
+        return NVAPI_INVALID_ARGUMENT;
+    NV_COMPUTE_GPU_TOPOLOGY result{};
+    result.version = NV_COMPUTE_GPU_TOPOLOGY_VER;
+    auto status = NvAPI_GPU_CudaEnumComputeCapableGpus(&result);
+    if (status == NVAPI_OK) {
+        output->gpuCount = result.gpuCount;
+        output->computeGpus = result.computeGpus;
+    }
+    return status;
+}
+
 static void logDisabled() {
     std::set<std::string_view, str::CaseInsensitiveCompare<std::string_view>> known;
     std::vector<std::string_view> recognized, unrecognized;
@@ -53,6 +69,14 @@ NVAPI_QUERY_INTERFACE nvapi_QueryInterface(NvU32 id) {
         return entry->second;
 
     std::call_once(logDisabledOnceFlag, logDisabled);
+
+    if (id == 0x36e39e6b) {
+        void* method = disabled.find("NvAPI_GPU_CudaEnumComputeCapableGpus") == disabled.end()
+            ? reinterpret_cast<void*>(physxComputeTopologyV2) : nullptr;
+        log::info(str::format(n, " (0x36e39e6b): PhysX compute topology V2",
+            method ? "" : " disabled"));
+        return registry.insert({id, method}).first->second;
+    }
 
     auto it = std::find_if(
         std::begin(nvapi_interface_table),
