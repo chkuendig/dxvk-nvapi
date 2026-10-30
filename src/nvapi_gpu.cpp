@@ -694,6 +694,8 @@ NVAPI_FUNCTION NvAPI_GPU_CudaEnumComputeCapableGpus(NV_COMPUTE_GPU_TOPOLOGY* pCo
         case NV_COMPUTE_GPU_TOPOLOGY_VER1: {
             auto pComputeTopoV1 = reinterpret_cast<NV_COMPUTE_GPU_TOPOLOGY_V1*>(pComputeTopo);
             pComputeTopoV1->gpuCount = cudaCapableGpus.size();
+            if (cudaCapableGpus.size() > NVAPI_MAX_GPU_PER_TOPOLOGY)
+                return InsufficientBuffer(n);
             for (auto i = 0U; i < cudaCapableGpus.size(); i++) {
                 pComputeTopoV1->computeGpus[i].hPhysicalGpu = cudaCapableGpus[i];
                 pComputeTopoV1->computeGpus[i].flags = flags;

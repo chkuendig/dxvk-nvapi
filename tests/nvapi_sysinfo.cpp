@@ -981,3 +981,36 @@ TEST_CASE("GetDisplayViewportsByResolution returns mosaic-not-active", "[.sysinf
     NV_RECT rect[NV_MOSAIC_MAX_DISPLAYS]{};
     REQUIRE(NvAPI_Mosaic_GetDisplayViewportsByResolution(0, 0, 0, rect, &corrected) == NVAPI_MOSAIC_NOT_ACTIVE);
 }
+
+TEST_CASE("CUDA topology V1 respects its fixed capacity", "[.sysinfo]") {
+    auto count = GENERATE(8U, 9U);
+    auto t = std::make_unique<DefaultTestEnvironment>();
+    auto e = t->ConfigureExpectations();
+    ALLOW_CALL(*t->DXGIFactory(), EnumAdapters1(_, _))
+        .LR_SIDE_EFFECT(*_2 = _1 < count ? static_cast<IDXGIAdapter1*>(t->DXGIAdapter()) : nullptr)
+        .LR_RETURN(_1 < count ? S_OK : DXGI_ERROR_NOT_FOUND);
+    ALLOW_CALL(*t->Vk(), GetDeviceExtensions(_, _))
+        .RETURN(std::set<std::string>{VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME, VK_NV_VIEWPORT_ARRAY2_EXTENSION_NAME});
+    REQUIRE(NvAPI_Initialize() == NVAPI_OK);
+
+    struct {
+        NV_COMPUTE_GPU_TOPOLOGY_V1 topology;
+        std::array<unsigned char, 32> canary;
+    } output;
+    std::memset(&output, 0xa5, sizeof(output));
+    output.topology.version = NV_COMPUTE_GPU_TOPOLOGY_VER1;
+    auto before = output;
+    auto status = NvAPI_GPU_CudaEnumComputeCapableGpus(reinterpret_cast<NV_COMPUTE_GPU_TOPOLOGY*>(&output.topology));
+    REQUIRE(output.topology.gpuCount == count);
+    REQUIRE(output.canary == before.canary);
+    if (count > NVAPI_MAX_GPU_PER_TOPOLOGY) {
+        REQUIRE(status == NVAPI_INSUFFICIENT_BUFFER);
+        REQUIRE(std::memcmp(output.topology.computeGpus, before.topology.computeGpus, sizeof(output.topology.computeGpus)) == 0);
+    } else {
+        REQUIRE(status == NVAPI_OK);
+        for (auto i = 0U; i < count; i++) {
+            REQUIRE(output.topology.computeGpus[i].hPhysicalGpu);
+            REQUIRE(output.topology.computeGpus[i].flags == 0x0b);
+        }
+    }
+}
