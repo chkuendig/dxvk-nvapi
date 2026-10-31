@@ -9,9 +9,12 @@
 // arguments. Only the first argument is used, the cdecl variadic signature accepts both shapes.
 NVAPI_FUNCTION NvAPI_CUDA_EnumComputeCapableByTopology(NV_COMPUTE_GPU_TOPOLOGY_V2* pComputeTopo, ...);
 
+// validate-methods.py expects the layout of the SDK table
+// clang-format off
 static constexpr struct {
     const char* func;
     NvU32 id;
 } nvapi_undocumented_interface_table[] = {
     { "NvAPI_CUDA_EnumComputeCapableByTopology", 0x36e39e6b },
 };
+// clang-format on
