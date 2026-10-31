@@ -1,5 +1,6 @@
 #include "nvapi_private.h"
 #include "nvapi_interface.h"
+#include "nvapi_interface_undocumented.h"
 #include "util/util_string.h"
 #include "util/util_log.h"
 
@@ -20,6 +21,9 @@ static void logDisabled() {
         std::end(nvapi_interface_table),
         std::inserter(known, known.begin()),
         [](const auto& iface) { return std::string_view(iface.func); });
+
+    for (const auto& iface : nvapi_undocumented_interface_table)
+        known.insert(iface.func);
 
     for (const auto& name : disabled) {
         if (name.empty())
@@ -54,17 +58,28 @@ NVAPI_QUERY_INTERFACE nvapi_QueryInterface(NvU32 id) {
 
     std::call_once(logDisabledOnceFlag, logDisabled);
 
+    auto name = std::string_view();
+
     auto it = std::find_if(
         std::begin(nvapi_interface_table),
         std::end(nvapi_interface_table),
         [id](const auto& item) { return item.id == id; });
 
-    if (it == std::end(nvapi_interface_table)) {
-        log::info(str::format(n, " (0x", std::hex, id, "): Unknown function ID"));
-        return registry.insert({id, nullptr}).first->second;
-    }
+    if (it != std::end(nvapi_interface_table))
+        name = it->func;
+    else {
+        auto undocumentedIt = std::find_if(
+            std::begin(nvapi_undocumented_interface_table),
+            std::end(nvapi_undocumented_interface_table),
+            [id](const auto& item) { return item.id == id; });
 
-    auto name = std::string_view(it->func);
+        if (undocumentedIt == std::end(nvapi_undocumented_interface_table)) {
+            log::info(str::format(n, " (0x", std::hex, id, "): Unknown function ID"));
+            return registry.insert({id, nullptr}).first->second;
+        }
+
+        name = undocumentedIt->func;
+    }
 
     if (disabled.find(name) != disabled.end()) {
         log::info(str::format(n, " (", name, "): Disabled"));
@@ -172,6 +187,7 @@ NVAPI_QUERY_INTERFACE nvapi_QueryInterface(NvU32 id) {
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_GPU_GetUUID)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_GPU_GetArchInfo)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_GPU_CudaEnumComputeCapableGpus)
+    INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_CUDA_EnumComputeCapableByTopology)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_GPU_GetGPUInfo)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_GPU_GetDynamicPstatesInfoEx)
     INSERT_AND_RETURN_WHEN_EQUALS(NvAPI_GPU_GetTachReading)

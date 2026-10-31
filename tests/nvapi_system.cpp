@@ -1,7 +1,11 @@
 #include <windows.h>
 #include "nvapi_tests_private.h"
-#include "nvapi_interface.h"
 #include "nvapi/display_config.h"
+
+// The SDK header defines the table, which is also part of the linked nvapi_interface.cpp
+namespace {
+#include "nvapi_interface.h"
+}
 
 using namespace Catch::Matchers;
 

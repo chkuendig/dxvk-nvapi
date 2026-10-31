@@ -1,5 +1,6 @@
 import sys
 import re
+from pathlib import Path
 
 if sys.version_info[0] < 3:
     print("Method validation failed due to invalid Python interpreter. "
@@ -37,6 +38,13 @@ with open(sys.argv[len(sys.argv) - 2]) as file:
 availableMethods = []
 regex = re.compile("^ *{ \\\"(\\w+)\\\", \\w+ },$")
 with open(sys.argv[len(sys.argv) - 1]) as file:
+    for line in file:
+        result = regex.match(line)
+        if result:
+            availableMethods.append(result.group(1))
+
+# Undocumented entry points are listed separately from the NVAPI SDK's interface table
+with (Path(__file__).parent / "src/nvapi_interface_undocumented.h").open() as file:
     for line in file:
         result = regex.match(line)
         if result:

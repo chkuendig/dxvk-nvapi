@@ -1,9 +1,13 @@
 #include <thread>
 #include "nvapi_tests_private.h"
+#include "../src/nvapi_interface_undocumented.h"
+#include "../src/util/util_string.h"
 #include "nvapi/default_test_environment.h"
 #include "nvapi/extended_test_environment.h"
 
 using namespace trompeloeil;
+
+NVAPI_QUERY_INTERFACE nvapi_QueryInterface(NvU32 id);
 
 namespace {
     constexpr auto luid1 = LUID{0x04030211, 0x08070655};
@@ -354,5 +358,88 @@ TEST_CASE("CUDA topology V2 returns GPUs confirmed by CUDA", "[.sysinfo-cuda]") 
         topology.version = NV_COMPUTE_GPU_TOPOLOGY_VER + 1;
         REQUIRE(NvAPI_GPU_CudaEnumComputeCapableGpus(&topology) == NVAPI_INCOMPATIBLE_STRUCT_VERSION);
         REQUIRE(t->CudaCreationCount() == 0);
+    }
+}
+
+// Also run in separate processes with DXVK_NVAPI_DISABLE_ENTRYPOINTS set, see meson.build
+TEST_CASE("PhysX private interface lookup", "[.sysinfo-cuda]") {
+    auto disabled = dxvk::str::fromnullable(std::getenv("DXVK_NVAPI_DISABLE_ENTRYPOINTS"));
+    auto privateDisabled = disabled == "NvAPI_CUDA_EnumComputeCapableByTopology" || disabled == "nvapi_cuda_enumcomputecapablebytopology";
+    auto publicDisabled = disabled == "NvAPI_GPU_CudaEnumComputeCapableGpus";
+
+    void* concurrent = nullptr;
+    std::thread lookup([&concurrent] { concurrent = nvapi_QueryInterface(0x36e39e6b); });
+    auto method = nvapi_QueryInterface(0x36e39e6b);
+    lookup.join();
+
+    REQUIRE(concurrent == method);
+    REQUIRE((method == nullptr) == privateDisabled);
+    if (!privateDisabled) {
+        REQUIRE(method == reinterpret_cast<void*>(NvAPI_CUDA_EnumComputeCapableByTopology));
+        auto entry = reinterpret_cast<decltype(&NvAPI_CUDA_EnumComputeCapableByTopology)>(method);
+        REQUIRE(entry(nullptr) == NVAPI_API_NOT_INITIALIZED);
+        REQUIRE(entry(nullptr, 0U, 0U, 0U) == NVAPI_API_NOT_INITIALIZED);
+    }
+
+    REQUIRE((nvapi_QueryInterface(0x5786cc6e) == nullptr) == publicDisabled);
+    REQUIRE(nvapi_QueryInterface(0xd875b6c5) == nullptr); // Different undocumented entry point, not implemented
+    REQUIRE(nvapi_QueryInterface(0x36e39e6b) == method);
+}
+
+TEST_CASE("PhysX private topology returns GPUs confirmed by CUDA", "[.sysinfo-cuda]") {
+    REQUIRE(NvAPI_CUDA_EnumComputeCapableByTopology(nullptr) == NVAPI_API_NOT_INITIALIZED);
+
+    auto t = std::make_unique<DefaultTestEnvironment>();
+    auto e = t->ConfigureExpectations();
+
+    ::SetEnvironmentVariableA("DXVK_NVAPI_ALLOW_OTHER_DRIVERS", "1");
+
+    auto driverId = GENERATE(VK_DRIVER_ID_MESA_RADV, VK_DRIVER_ID_NVIDIA_PROPRIETARY);
+    ALLOW_CALL(*t->Vk(), GetDeviceExtensions(_, _))
+        .RETURN(std::set<std::string>{VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME, VK_NV_VIEWPORT_ARRAY2_EXTENSION_NAME});
+    ALLOW_CALL(*t->Vk(), GetPhysicalDeviceProperties2(_, _, _))
+        .SIDE_EFFECT(VkMock::ConfigureGetPhysicalDeviceProperties2(_3,
+            [driverId](auto vkProps) { ConfigureVkProps(vkProps, driverId, luid1); }));
+
+    NV_COMPUTE_GPU_TOPOLOGY_V2 topology;
+    topology.version = 0xdeadbeef;
+    topology.gpuCount = 0xbaadf00d;
+    topology.computeGpus = reinterpret_cast<NV_COMPUTE_GPU*>(0x1);
+
+    SECTION("Private topology returns the V2 array") {
+        auto c = ConfigureCudaDevices(*t->Cuda(), {luid1});
+
+        REQUIRE(NvAPI_Initialize() == NVAPI_OK);
+        REQUIRE(NvAPI_CUDA_EnumComputeCapableByTopology(nullptr) == NVAPI_INVALID_ARGUMENT);
+        REQUIRE(NvAPI_CUDA_EnumComputeCapableByTopology(&topology) == NVAPI_OK);
+        REQUIRE(topology.version == 0xdeadbeef);
+        REQUIRE(topology.gpuCount == 1);
+        REQUIRE(topology.computeGpus[0].hPhysicalGpu == reinterpret_cast<NvPhysicalGpuHandle>(nvapiAdapterRegistry->GetFirstAdapter()));
+        REQUIRE(topology.computeGpus[0].flags == 0x21001b);
+
+        NV_COMPUTE_GPU_TOPOLOGY_V2 publicTopology{};
+        publicTopology.version = NV_COMPUTE_GPU_TOPOLOGY_VER;
+        REQUIRE(NvAPI_GPU_CudaEnumComputeCapableGpus(&publicTopology) == NVAPI_OK);
+        REQUIRE(topology.computeGpus == publicTopology.computeGpus);
+
+        // PhysXDevice 18.12.7.2 passes three additional arguments and repeats the
+        // query with its own array, which is replaced and left untouched
+        NV_COMPUTE_GPU callerGpu{};
+        topology.computeGpus = &callerGpu;
+        REQUIRE(NvAPI_CUDA_EnumComputeCapableByTopology(&topology, 0U, 0U, 0U) == NVAPI_OK);
+        REQUIRE(topology.version == 0xdeadbeef);
+        REQUIRE(topology.computeGpus == publicTopology.computeGpus);
+        REQUIRE(callerGpu.hPhysicalGpu == nullptr);
+        REQUIRE(callerGpu.flags == 0);
+    }
+
+    SECTION("Private topology returns no-implementation without GPUs confirmed by CUDA") {
+        ALLOW_CALL(*t->Cuda(), IsAvailable()).RETURN(false);
+
+        REQUIRE(NvAPI_Initialize() == NVAPI_OK);
+        REQUIRE(NvAPI_CUDA_EnumComputeCapableByTopology(&topology, 0U, 0U, 0U) == NVAPI_NO_IMPLEMENTATION);
+        REQUIRE(topology.version == 0xdeadbeef);
+        REQUIRE(topology.gpuCount == 0xbaadf00d);
+        REQUIRE(topology.computeGpus == reinterpret_cast<NV_COMPUTE_GPU*>(0x1));
     }
 }

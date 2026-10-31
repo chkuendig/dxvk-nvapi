@@ -1,4 +1,5 @@
 #include "nvapi_private.h"
+#include "nvapi_interface_undocumented.h"
 #include "nvapi_globals.h"
 #include "util/util_statuscode.h"
 #include "util/util_string.h"
@@ -1311,4 +1312,27 @@ NVAPI_FUNCTION NvAPI_GPU_GetPstates20(NvPhysicalGpuHandle hPhysicalGpu, NV_GPU_P
     }
 
     return NoImplementation(n, alreadyLoggedNoImplementation);
+}
+
+NVAPI_FUNCTION NvAPI_CUDA_EnumComputeCapableByTopology(NV_COMPUTE_GPU_TOPOLOGY_V2* pComputeTopo, ...) {
+    static constexpr auto n = FUNC;
+
+    if (log::tracing())
+        log::trace(n, log::fmt::ptr(pComputeTopo));
+
+    if (!nvapiAdapterRegistry)
+        return ApiNotInitialized(n);
+
+    if (!pComputeTopo)
+        return InvalidArgument(n);
+
+    const auto& topology = nvapiAdapterRegistry->GetComputeGpuTopology();
+    if (!topology.hasCudaDevices)
+        return NoImplementation(n);
+
+    // Same output as CudaEnumComputeCapableGpus V2, though the version is neither checked nor changed
+    pComputeTopo->gpuCount = topology.gpus.size();
+    pComputeTopo->computeGpus = const_cast<NV_COMPUTE_GPU*>(topology.gpus.data());
+
+    return Ok(n);
 }

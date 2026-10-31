@@ -34,6 +34,8 @@ When available, DXVK-NVAPI uses `nvcuda.dll` to report CUDA capable GPUs to appl
 
 NVIDIA's NVAPI on Windows rejects version 2 of `NvAPI_GPU_CudaEnumComputeCapableGpus`. DXVK-NVAPI accepts it when at least one GPU was confirmed by CUDA, since legacy PhysX versions rely on it. In that case only the version field is read, and the returned GPU array is owned by DXVK-NVAPI. It stays valid until the final `NvAPI_Unload` and must not be modified. GPUs confirmed by CUDA additionally report the CUDA available, CUDA capable and PhysX available flags in version 2.
 
+The undocumented entry point `0x36e39e6b`, named `NvAPI_CUDA_EnumComputeCapableByTopology` here, is queried by legacy PhysX versions. It returns the same GPU array as version 2 of `NvAPI_GPU_CudaEnumComputeCapableGpus`, without checking or changing the version field, and `NVAPI_NO_IMPLEMENTATION` when no GPU was confirmed by CUDA. Its signature is inferred from callers. Use its name to disable it with `DXVK_NVAPI_DISABLE_ENTRYPOINTS`.
+
 ## How to build
 
 Like DXVK, this library is being built as a Windows DLL using MinGW. DXVK-NVAPI requires MinGW-w64 compiler and headers version 9 or newer, the Meson build system at least version 0.58 and Python 3 (needed for a prebuild validation script). This project uses git submodules. Ensure to fetch the submodules while or after cloning the repository, e.g. with `git clone --recurse-submodules git@github.com:jp7677/dxvk-nvapi.git`.

@@ -32,6 +32,7 @@ nvapi_src = files([
   '../src/nvapi_ngx.cpp',
   '../src/nvapi_sys.cpp',
   '../src/nvapi_vulkan.cpp',
+  '../src/nvapi_interface.cpp',
 ])
 
 nvapi_tests_src = files([
@@ -60,6 +61,15 @@ nvapi_exe = executable(target_name, [ nvapi_src, catch2_src, nvapi_tests_src, dx
   dependencies        : [ lib_dxgi, lib_d3d11, lib_d3d12, lib_version ],
   include_directories : [ nvapi_headers, vk_headers, dx_headers, nvml_headers, catch2_headers, trompeloeil_headers ],
   install             : true)
+
+test('nvapi-unit-tests', nvapi_exe, args : ['[@unit-tests]'], timeout : 300)
+
+# Entry points are disabled at process start, so check this in separate processes
+foreach disabled_name : ['NvAPI_CUDA_EnumComputeCapableByTopology', 'nvapi_cuda_enumcomputecapablebytopology', 'NvAPI_GPU_CudaEnumComputeCapableGpus']
+  test('nvapi-disable-' + disabled_name, nvapi_exe,
+    args : ['PhysX private interface lookup'],
+    env : ['DXVK_NVAPI_DISABLE_ENTRYPOINTS=' + disabled_name])
+endforeach
 
 nvofapi_src = files([
   '../src/util/util_string.cpp',
