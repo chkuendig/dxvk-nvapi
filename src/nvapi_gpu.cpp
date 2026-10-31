@@ -675,10 +675,11 @@ NVAPI_FUNCTION NvAPI_GPU_CudaEnumComputeCapableGpus(NV_COMPUTE_GPU_TOPOLOGY* pCo
     if (!pComputeTopo)
         return InvalidArgument(n);
 
-    if (pComputeTopo->version != NV_COMPUTE_GPU_TOPOLOGY_VER1)
+    if (pComputeTopo->version != NV_COMPUTE_GPU_TOPOLOGY_VER1 && pComputeTopo->version != NV_COMPUTE_GPU_TOPOLOGY_VER)
         return IncompatibleStructVersion(n, pComputeTopo->version);
 
-    const auto& cudaCapableGpus = nvapiAdapterRegistry->GetComputeGpuTopology().gpus;
+    const auto& topology = nvapiAdapterRegistry->GetComputeGpuTopology();
+    const auto& cudaCapableGpus = topology.gpus;
 
     switch (pComputeTopo->version) {
         case NV_COMPUTE_GPU_TOPOLOGY_VER1: {
@@ -690,6 +691,17 @@ NVAPI_FUNCTION NvAPI_GPU_CudaEnumComputeCapableGpus(NV_COMPUTE_GPU_TOPOLOGY* pCo
                 pComputeTopoV1->computeGpus[i].hPhysicalGpu = cudaCapableGpus[i].hPhysicalGpu;
                 pComputeTopoV1->computeGpus[i].flags = NvapiAdapterRegistry::ComputeGpuFlags;
             }
+            break;
+        }
+        case NV_COMPUTE_GPU_TOPOLOGY_VER: {
+            // NVAPI on Windows denies V2, so keep doing that unless CUDA confirmed a GPU. Legacy PhysX
+            // initializes only the version and expects to receive an array, so ignore the other fields.
+            // The array stays valid until NvAPI_Unload and must not be modified by the caller.
+            if (!topology.hasCudaDevices)
+                return IncompatibleStructVersion(n, pComputeTopo->version);
+
+            pComputeTopo->gpuCount = cudaCapableGpus.size();
+            pComputeTopo->computeGpus = const_cast<NV_COMPUTE_GPU*>(cudaCapableGpus.data());
             break;
         }
         default:

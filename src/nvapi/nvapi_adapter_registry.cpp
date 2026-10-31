@@ -190,7 +190,7 @@ namespace dxvk {
                 continue; // Report every adapter only once
 
             log::info(str::format("CUDA device ", ordinal, " corresponds to ", matches.front()->GetDeviceName()));
-            topology.gpus.push_back({handle, ComputeGpuFlags});
+            topology.gpus.push_back({handle, CudaComputeGpuFlags});
         }
 
         topology.hasCudaDevices = !topology.gpus.empty();

@@ -10,7 +10,8 @@
 
 namespace dxvk {
     struct NvapiComputeGpuTopology {
-        // Ordered by CUDA device ordinal, followed by adapters that are only known by heuristic
+        // Ordered by CUDA device ordinal, followed by adapters that are only known by heuristic,
+        // the vector is returned to callers of topology V2 and must not change after discovery
         std::vector<NV_COMPUTE_GPU> gpus;
         // True when at least one entry was confirmed by the CUDA driver API
         bool hasCudaDevices{};
@@ -43,6 +44,8 @@ namespace dxvk {
 
         // Those flags match NVAPI on Windows for a normal desktop machine
         constexpr static NvU32 ComputeGpuFlags = NV_COMPUTE_GPU_TOPOLOGY_PHYSICS_CAPABLE | NV_COMPUTE_GPU_TOPOLOGY_PHYSICS_ENABLE | NV_COMPUTE_GPU_TOPOLOGY_PHYSICS_RECOMMENDED;
+        // GPUs confirmed by CUDA additionally report CUDA and PhysX availability, but only for topology V2
+        constexpr static NvU32 CudaComputeGpuFlags = ComputeGpuFlags | NV_COMPUTE_GPU_TOPOLOGY_CUDA_AVAILABLE | NV_COMPUTE_GPU_TOPOLOGY_CUDA_CAPABLE | NV_COMPUTE_GPU_TOPOLOGY_PHYSICS_AVAILABLE;
 
       private:
         NvapiResourceFactory& m_resourceFactory;

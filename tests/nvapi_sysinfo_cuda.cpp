@@ -294,3 +294,65 @@ TEST_CASE("CUDA topology reports multiple adapters in CUDA device order", "[.sys
         REQUIRE(topology.computeGpus[1].hPhysicalGpu == reinterpret_cast<NvPhysicalGpuHandle>(nvapiAdapterRegistry->GetAdapter(0)));
     REQUIRE(nvapiAdapterRegistry->GetComputeGpuTopology().hasCudaDevices);
 }
+
+TEST_CASE("CUDA topology V2 returns GPUs confirmed by CUDA", "[.sysinfo-cuda]") {
+    auto t = std::make_unique<DefaultTestEnvironment>();
+    auto e = t->ConfigureExpectations();
+
+    ::SetEnvironmentVariableA("DXVK_NVAPI_ALLOW_OTHER_DRIVERS", "1");
+
+    auto driverId = GENERATE(VK_DRIVER_ID_MESA_RADV, VK_DRIVER_ID_NVIDIA_PROPRIETARY);
+    ALLOW_CALL(*t->Vk(), GetDeviceExtensions(_, _))
+        .RETURN(std::set<std::string>{VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME, VK_NV_VIEWPORT_ARRAY2_EXTENSION_NAME});
+    ALLOW_CALL(*t->Vk(), GetPhysicalDeviceProperties2(_, _, _))
+        .SIDE_EFFECT(VkMock::ConfigureGetPhysicalDeviceProperties2(_3,
+            [driverId](auto vkProps) { ConfigureVkProps(vkProps, driverId, luid1); }));
+
+    // Legacy PhysX initializes only the version
+    NV_COMPUTE_GPU_TOPOLOGY_V2 topology;
+    topology.version = NV_COMPUTE_GPU_TOPOLOGY_VER;
+    topology.gpuCount = 0xdeadbeef;
+    topology.computeGpus = reinterpret_cast<NV_COMPUTE_GPU*>(0x1);
+
+    SECTION("V2 returns an NVAPI owned array") {
+        auto c = ConfigureCudaDevices(*t->Cuda(), {luid1});
+
+        REQUIRE(NvAPI_Initialize() == NVAPI_OK);
+
+        auto status = NVAPI_ERROR;
+        std::thread([&status, &topology] { status = NvAPI_GPU_CudaEnumComputeCapableGpus(&topology); }).join();
+        REQUIRE(status == NVAPI_OK);
+        REQUIRE(topology.version == NV_COMPUTE_GPU_TOPOLOGY_VER);
+        REQUIRE(topology.gpuCount == 1);
+        REQUIRE(topology.computeGpus == nvapiAdapterRegistry->GetComputeGpuTopology().gpus.data());
+        REQUIRE(topology.computeGpus[0].hPhysicalGpu == reinterpret_cast<NvPhysicalGpuHandle>(nvapiAdapterRegistry->GetFirstAdapter()));
+        REQUIRE(topology.computeGpus[0].flags == 0x21001b);
+
+        // The array outlives the producing thread and is not changed by subsequent queries
+        NV_COMPUTE_GPU_TOPOLOGY_V2 repeated{};
+        repeated.version = NV_COMPUTE_GPU_TOPOLOGY_VER;
+        REQUIRE(NvAPI_GPU_CudaEnumComputeCapableGpus(&repeated) == NVAPI_OK);
+        REQUIRE(repeated.computeGpus == topology.computeGpus);
+        REQUIRE(EnumComputeCapableGpus().computeGpus[0].flags == 0x0b);
+        REQUIRE(topology.computeGpus[0].hPhysicalGpu == reinterpret_cast<NvPhysicalGpuHandle>(nvapiAdapterRegistry->GetFirstAdapter()));
+        REQUIRE(topology.computeGpus[0].flags == 0x21001b);
+    }
+
+    SECTION("V2 returns incompatible-struct-version without GPUs confirmed by CUDA") {
+        ALLOW_CALL(*t->Cuda(), IsAvailable()).RETURN(false);
+
+        REQUIRE(NvAPI_Initialize() == NVAPI_OK);
+        REQUIRE(NvAPI_GPU_CudaEnumComputeCapableGpus(&topology) == NVAPI_INCOMPATIBLE_STRUCT_VERSION);
+        REQUIRE(topology.gpuCount == 0xdeadbeef);
+        REQUIRE(topology.computeGpus == reinterpret_cast<NV_COMPUTE_GPU*>(0x1));
+    }
+
+    SECTION("Unknown struct version returns incompatible-struct-version") {
+        FORBID_CALL(*t->Cuda(), IsAvailable());
+
+        REQUIRE(NvAPI_Initialize() == NVAPI_OK);
+        topology.version = NV_COMPUTE_GPU_TOPOLOGY_VER + 1;
+        REQUIRE(NvAPI_GPU_CudaEnumComputeCapableGpus(&topology) == NVAPI_INCOMPATIBLE_STRUCT_VERSION);
+        REQUIRE(t->CudaCreationCount() == 0);
+    }
+}
