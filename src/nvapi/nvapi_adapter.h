@@ -37,6 +37,7 @@ namespace dxvk {
         [[nodiscard]] uint32_t GetPciDeviceId() const;
         [[nodiscard]] uint32_t GetBoardId() const;
         [[nodiscard]] std::optional<LUID> GetLuid() const;
+        [[nodiscard]] uint32_t GetLuidNodeMask() const;
         [[nodiscard]] std::array<uint8_t, NVAPI_UUID_LEN> GetUuid() const;
         [[nodiscard]] NV_GPU_ARCHITECTURE_ID GetArchitectureId() const;
         [[nodiscard]] VkRayTracingInvocationReorderModeNV GetReorderingHint() const;

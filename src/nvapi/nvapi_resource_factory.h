@@ -5,6 +5,7 @@
 #include "../shared/resource_factory.h"
 #include "../shared/vk.h"
 #include "nvml.h"
+#include "nvcuda.h"
 
 namespace dxvk {
     class NvapiResourceFactory : ResourceFactory {
@@ -15,5 +16,6 @@ namespace dxvk {
         virtual Com<IDXGIFactory1> CreateDXGIFactory1();
         virtual Com<ID3D12Device> CreateD3D12Device(Com<IDXGIAdapter3>& dxgiAdapter, D3D_FEATURE_LEVEL featureLevel);
         virtual std::unique_ptr<Nvml> CreateNvml();
+        virtual std::unique_ptr<NvCuda> CreateNvCuda();
     };
 }

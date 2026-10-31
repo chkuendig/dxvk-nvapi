@@ -5,6 +5,7 @@
 #include "nvapi_d3d12_graphics_command_list.h"
 #include "nvapi_d3d_low_latency_device.h"
 #include "nvapi_vulkan_low_latency_device_factory.h"
+#include "../util/util_string.h"
 #include "../util/util_log.h"
 
 namespace dxvk {
@@ -61,6 +62,13 @@ namespace dxvk {
                 delete nvapiAdapter;
         }
 
+        for (const auto adapter : m_nvapiAdapters) {
+            if (!adapter->HasNvProprietaryDriver() || adapter->GetArchitectureId() < NV_GPU_ARCHITECTURE_GM000) // Maxwell is the oldest generation we can detect
+                continue;
+
+            m_heuristicComputeGpuTopology.gpus.push_back({reinterpret_cast<NvPhysicalGpuHandle>(adapter), ComputeGpuFlags});
+        }
+
         return !m_nvapiAdapters.empty();
     }
 
@@ -90,6 +98,109 @@ namespace dxvk {
 
     bool NvapiAdapterRegistry::IsAdapter(NvapiAdapter* handle) const {
         return std::find(m_nvapiAdapters.begin(), m_nvapiAdapters.end(), handle) != m_nvapiAdapters.end();
+    }
+
+    const NvapiComputeGpuTopology& NvapiAdapterRegistry::GetComputeGpuTopology() {
+        std::unique_lock lock(m_computeGpuTopologyMutex);
+
+        // A CUDA provider may call back into NVAPI on the discovering thread,
+        // answer such calls without CUDA instead of waiting for ourselves
+        if (m_computeGpuTopologyThread == std::this_thread::get_id())
+            return m_heuristicComputeGpuTopology;
+
+        m_computeGpuTopologyCondition.wait(lock, [this] { return !m_computeGpuTopologyThread.has_value(); });
+        if (m_computeGpuTopology.has_value())
+            return m_computeGpuTopology.value();
+
+        // Load and query CUDA outside of the lock, the provider may call back into NVAPI
+        m_computeGpuTopologyThread = std::this_thread::get_id();
+        lock.unlock();
+
+        std::unique_ptr<NvCuda> nvcuda;
+        auto topology = DiscoverComputeGpuTopology(nvcuda);
+
+        lock.lock();
+        m_nvcuda = std::move(nvcuda);
+        m_computeGpuTopology = std::move(topology);
+        m_computeGpuTopologyThread.reset();
+        m_computeGpuTopologyCondition.notify_all();
+
+        return m_computeGpuTopology.value();
+    }
+
+    NvapiComputeGpuTopology NvapiAdapterRegistry::DiscoverComputeGpuTopology(std::unique_ptr<NvCuda>& nvcuda) const {
+        auto topology = NvapiComputeGpuTopology{};
+
+        // Without any LUID there is nothing to correlate, so do not load CUDA at all
+        if (std::none_of(m_nvapiAdapters.begin(), m_nvapiAdapters.end(),
+                [](const auto& adapter) { return adapter->GetLuid().has_value(); }))
+            return m_heuristicComputeGpuTopology;
+
+        nvcuda = m_resourceFactory.CreateNvCuda();
+        if (!nvcuda->IsAvailable()) {
+            nvcuda.reset();
+            return m_heuristicComputeGpuTopology;
+        }
+
+        // Once initialized, keep nvcuda.dll loaded until the final NvAPI_Unload
+        if (auto result = nvcuda->Init(0); result != CUDA_SUCCESS) {
+            log::info(str::format("CUDA initialization failed with error: ", result));
+            return m_heuristicComputeGpuTopology;
+        }
+
+        auto deviceCount = 0;
+        if (auto result = nvcuda->DeviceGetCount(&deviceCount); result != CUDA_SUCCESS) {
+            log::info(str::format("Querying CUDA device count failed with error: ", result));
+            return m_heuristicComputeGpuTopology;
+        }
+
+        for (auto ordinal = 0; ordinal < deviceCount; ordinal++) {
+            CUdevice device{};
+            if (auto result = nvcuda->DeviceGet(&device, ordinal); result != CUDA_SUCCESS) {
+                log::info(str::format("Querying CUDA device ", ordinal, " failed with error: ", result));
+                continue;
+            }
+
+            LUID luid{};
+            static_assert(sizeof(luid) == 8);
+            auto nodeMask = 0U;
+            if (auto result = nvcuda->DeviceGetLuid(reinterpret_cast<char*>(&luid), &nodeMask, device); result != CUDA_SUCCESS) {
+                log::info(str::format("Querying LUID of CUDA device ", ordinal, " failed with error: ", result));
+                continue;
+            }
+
+            std::vector<NvapiAdapter*> matches;
+            std::copy_if(m_nvapiAdapters.begin(), m_nvapiAdapters.end(), std::back_inserter(matches),
+                [&luid, nodeMask](const auto& adapter) {
+                    auto adapterLuid = adapter->GetLuid();
+                    return adapterLuid.has_value()
+                        && adapterLuid.value().HighPart == luid.HighPart
+                        && adapterLuid.value().LowPart == luid.LowPart
+                        && adapter->GetLuidNodeMask() == nodeMask;
+                });
+
+            if (matches.size() != 1) {
+                log::info(str::format("CUDA device ", ordinal, " matches ", matches.size(), " adapters, ignoring"));
+                continue;
+            }
+
+            auto handle = reinterpret_cast<NvPhysicalGpuHandle>(matches.front());
+            if (std::any_of(topology.gpus.begin(), topology.gpus.end(),
+                    [handle](const auto& gpu) { return gpu.hPhysicalGpu == handle; }))
+                continue; // Report every adapter only once
+
+            log::info(str::format("CUDA device ", ordinal, " corresponds to ", matches.front()->GetDeviceName()));
+            topology.gpus.push_back({handle, ComputeGpuFlags});
+        }
+
+        topology.hasCudaDevices = !topology.gpus.empty();
+
+        for (const auto& gpu : m_heuristicComputeGpuTopology.gpus)
+            if (std::none_of(topology.gpus.begin(), topology.gpus.end(),
+                    [&gpu](const auto& cudaGpu) { return cudaGpu.hPhysicalGpu == gpu.hPhysicalGpu; }))
+                topology.gpus.push_back(gpu);
+
+        return topology;
     }
 
     uint32_t NvapiAdapterRegistry::GetOutputCount(NvapiAdapter* handle) const {

@@ -35,4 +35,8 @@ namespace dxvk {
     std::unique_ptr<Nvml> NvapiResourceFactory::CreateNvml() {
         return std::make_unique<Nvml>();
     }
+
+    std::unique_ptr<NvCuda> NvapiResourceFactory::CreateNvCuda() {
+        return std::make_unique<NvCuda>();
+    }
 }

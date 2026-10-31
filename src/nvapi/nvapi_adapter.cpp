@@ -239,6 +239,10 @@ namespace dxvk {
         return std::make_optional(luid);
     }
 
+    uint32_t NvapiAdapter::GetLuidNodeMask() const {
+        return m_vkIdProperties.deviceLUIDValid ? m_vkIdProperties.deviceNodeMask : 0;
+    }
+
     std::array<uint8_t, NVAPI_UUID_LEN> NvapiAdapter::GetUuid() const {
         static_assert(NVAPI_UUID_LEN == VK_UUID_SIZE);
         static_assert(sizeof(NV_GPU_UUID_V1::uuid) == sizeof(VkPhysicalDeviceIDProperties::deviceUUID));

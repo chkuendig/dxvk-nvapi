@@ -7,6 +7,7 @@ MockFactory::MockFactory() {
     m_d3d12DeviceMock = std::make_unique<D3D12Vkd3dDeviceMock>();
     m_vkMock = std::make_unique<VkMock>();
     m_nvmlMock = std::make_unique<NvmlMock>();
+    m_nvcudaMock = std::make_unique<NvCudaMock>();
 }
 
 dxvk::Com<IDXGIFactory1> MockFactory::CreateDXGIFactory1() {
@@ -29,6 +30,11 @@ std::unique_ptr<dxvk::Nvml> MockFactory::CreateNvml() {
     return std::move(m_nvmlMock);
 }
 
+std::unique_ptr<dxvk::NvCuda> MockFactory::CreateNvCuda() {
+    m_nvcudaCreationCount++;
+    return std::move(m_nvcudaMock);
+}
+
 DXGIDxvkFactoryMock* MockFactory::GetDXGIFactoryMock() const {
     return m_dxgiFactoryMock.get();
 }
@@ -45,6 +51,15 @@ VkMock* MockFactory::GetVkMock() const {
 NvmlMock* MockFactory::GetNvmlMock() const {
     REQUIRE(m_nvmlMock); // will be moved after NvAPI_Initialize()
     return m_nvmlMock.get();
+}
+
+NvCudaMock* MockFactory::GetNvCudaMock() const {
+    REQUIRE(m_nvcudaMock); // will be moved after the first CUDA topology query
+    return m_nvcudaMock.get();
+}
+
+uint32_t MockFactory::GetNvCudaCreationCount() const {
+    return m_nvcudaCreationCount;
 }
 
 DXGIDxvkAdapterMock* MockFactory::CreateDXGIDxvkAdapterMock() {

@@ -30,6 +30,8 @@ In order to support Vulkan flavor of NVIDIA Reflex, one of two backing implement
 
 When available, DXVK-NVAPI uses NVIDIA's NVML management library to query temperature, utilization and others for NVIDIA GPUs. See [wine-nvml](https://github.com/Saancreed/wine-nvml) how to add NVML support to Wine/Proton.
 
+When available, DXVK-NVAPI uses `nvcuda.dll` to report CUDA capable GPUs to applications like PhysX. On the first CUDA topology query, it loads `nvcuda.dll` and matches the LUID and node mask of every CUDA device (`cuDeviceGetLuid`) with the LUIDs of the GPUs it knows from DXVK. This works the same for every GPU vendor and CUDA implementation, as long as the GPU is not skipped (see below). Without a usable `nvcuda.dll`, or without a matching device, only GPUs running the NVIDIA proprietary driver are reported as before.
+
 ## How to build
 
 Like DXVK, this library is being built as a Windows DLL using MinGW. DXVK-NVAPI requires MinGW-w64 compiler and headers version 9 or newer, the Meson build system at least version 0.58 and Python 3 (needed for a prebuild validation script). This project uses git submodules. Ensure to fetch the submodules while or after cloning the repository, e.g. with `git clone --recurse-submodules git@github.com:jp7677/dxvk-nvapi.git`.

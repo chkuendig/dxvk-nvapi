@@ -4,6 +4,7 @@
 #include "../mocks/vulkan_mocks.h"
 #include "../mocks/dxgi_mocks.h"
 #include "../mocks/nvml_mocks.h"
+#include "../mocks/nvcuda_mocks.h"
 #include "mock_factory.h"
 
 using namespace trompeloeil;
@@ -18,6 +19,8 @@ class DefaultTestEnvironment {
     [[nodiscard]] D3D12Vkd3dDeviceMock* D3D12Device() const { return mockFactory->GetD3D12DeviceMock(); }
     [[nodiscard]] VkMock* Vk() const { return mockFactory->GetVkMock(); }
     [[nodiscard]] NvmlMock* Nvml() const { return mockFactory->GetNvmlMock(); }
+    [[nodiscard]] NvCudaMock* Cuda() const { return mockFactory->GetNvCudaMock(); }
+    [[nodiscard]] uint32_t CudaCreationCount() const { return mockFactory->GetNvCudaCreationCount(); }
     [[nodiscard]] DXGIDxvkAdapterMock* DXGIAdapter() const { return adapter; }
     [[nodiscard]] DXGIOutput6Mock* DXGIOutput() const { return output; }
 

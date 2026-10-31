@@ -678,17 +678,7 @@ NVAPI_FUNCTION NvAPI_GPU_CudaEnumComputeCapableGpus(NV_COMPUTE_GPU_TOPOLOGY* pCo
     if (pComputeTopo->version != NV_COMPUTE_GPU_TOPOLOGY_VER1)
         return IncompatibleStructVersion(n, pComputeTopo->version);
 
-    auto cudaCapableGpus = std::vector<NvPhysicalGpuHandle>(0);
-    for (auto i = 0U; i < nvapiAdapterRegistry->GetAdapterCount(); i++) {
-        auto adapter = nvapiAdapterRegistry->GetAdapter(i);
-        if (!adapter->HasNvProprietaryDriver() || adapter->GetArchitectureId() < NV_GPU_ARCHITECTURE_GM000) // Maxwell is the oldest generation we can detect
-            continue;
-
-        cudaCapableGpus.push_back(reinterpret_cast<NvPhysicalGpuHandle>(adapter));
-    }
-
-    // Those flags match NVAPI on Windows for a normal desktop machine
-    auto flags = NV_COMPUTE_GPU_TOPOLOGY_PHYSICS_CAPABLE | NV_COMPUTE_GPU_TOPOLOGY_PHYSICS_ENABLE | NV_COMPUTE_GPU_TOPOLOGY_PHYSICS_RECOMMENDED;
+    const auto& cudaCapableGpus = nvapiAdapterRegistry->GetComputeGpuTopology().gpus;
 
     switch (pComputeTopo->version) {
         case NV_COMPUTE_GPU_TOPOLOGY_VER1: {
@@ -697,8 +687,8 @@ NVAPI_FUNCTION NvAPI_GPU_CudaEnumComputeCapableGpus(NV_COMPUTE_GPU_TOPOLOGY* pCo
             if (cudaCapableGpus.size() > NVAPI_MAX_GPU_PER_TOPOLOGY)
                 return InsufficientBuffer(n);
             for (auto i = 0U; i < cudaCapableGpus.size(); i++) {
-                pComputeTopoV1->computeGpus[i].hPhysicalGpu = cudaCapableGpus[i];
-                pComputeTopoV1->computeGpus[i].flags = flags;
+                pComputeTopoV1->computeGpus[i].hPhysicalGpu = cudaCapableGpus[i].hPhysicalGpu;
+                pComputeTopoV1->computeGpus[i].flags = NvapiAdapterRegistry::ComputeGpuFlags;
             }
             break;
         }

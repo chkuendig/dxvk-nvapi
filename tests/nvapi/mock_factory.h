@@ -5,6 +5,7 @@
 #include "../mocks/vulkan_mocks.h"
 #include "../mocks/dxgi_mocks.h"
 #include "../mocks/nvml_mocks.h"
+#include "../mocks/nvcuda_mocks.h"
 #include "../mocks/d3d12_mocks.h"
 
 using namespace trompeloeil;
@@ -19,11 +20,14 @@ class MockFactory final : public dxvk::NvapiResourceFactory {
     std::unique_ptr<dxvk::Vk> CreateVulkan(dxvk::Com<IDXGIFactory1>& dxgiFactory) override;
     std::unique_ptr<dxvk::Vk> CreateVulkan(const char* moduleName) override;
     std::unique_ptr<dxvk::Nvml> CreateNvml() override;
+    std::unique_ptr<dxvk::NvCuda> CreateNvCuda() override;
 
     [[nodiscard]] DXGIDxvkFactoryMock* GetDXGIFactoryMock() const;
     [[nodiscard]] D3D12Vkd3dDeviceMock* GetD3D12DeviceMock() const;
     [[nodiscard]] VkMock* GetVkMock() const;
     [[nodiscard]] NvmlMock* GetNvmlMock() const;
+    [[nodiscard]] NvCudaMock* GetNvCudaMock() const;
+    [[nodiscard]] uint32_t GetNvCudaCreationCount() const;
 
     [[nodiscard]] DXGIDxvkAdapterMock* CreateDXGIDxvkAdapterMock();
     [[nodiscard]] DXGIOutput6Mock* CreateDXGIOutput6Mock();
@@ -34,6 +38,8 @@ class MockFactory final : public dxvk::NvapiResourceFactory {
     std::unique_ptr<D3D12Vkd3dDeviceMock> m_d3d12DeviceMock;
     std::unique_ptr<VkMock> m_vkMock;
     std::unique_ptr<NvmlMock> m_nvmlMock;
+    std::unique_ptr<NvCudaMock> m_nvcudaMock;
+    std::atomic<uint32_t> m_nvcudaCreationCount{};
 
     std::vector<std::unique_ptr<DXGIDxvkAdapterMock>> m_dxgiAdapterMocks;
     std::vector<std::unique_ptr<DXGIOutput6Mock>> m_dxgiOutputMocks;
