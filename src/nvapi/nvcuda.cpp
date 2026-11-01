@@ -20,9 +20,9 @@ namespace dxvk {
         m_cuInit = GetProcAddress<PFN_cuInit>("cuInit");
         m_cuDeviceGetCount = GetProcAddress<PFN_cuDeviceGetCount>("cuDeviceGetCount");
         m_cuDeviceGet = GetProcAddress<PFN_cuDeviceGet>("cuDeviceGet");
-        m_cuDeviceGetLuid = GetProcAddress<PFN_cuDeviceGetLuid>("cuDeviceGetLuid");
+        m_cuDeviceGetAttribute = GetProcAddress<PFN_cuDeviceGetAttribute>("cuDeviceGetAttribute");
 
-        if (m_cuInit && m_cuDeviceGetCount && m_cuDeviceGet && m_cuDeviceGetLuid)
+        if (m_cuInit && m_cuDeviceGetCount && m_cuDeviceGet && m_cuDeviceGetAttribute)
             return;
 
         log::info(str::format(nvcudaModuleName, " loaded but does not provide the required CUDA driver API entry points"));
@@ -55,8 +55,8 @@ namespace dxvk {
         return m_cuDeviceGet(device, ordinal);
     }
 
-    CUresult NvCuda::DeviceGetLuid(char* luid, unsigned int* deviceNodeMask, CUdevice device) const {
-        return m_cuDeviceGetLuid(luid, deviceNodeMask, device);
+    CUresult NvCuda::DeviceGetAttribute(int* value, CUdevice_attribute attribute, CUdevice device) const {
+        return m_cuDeviceGetAttribute(value, attribute, device);
     }
 
     template <typename T>

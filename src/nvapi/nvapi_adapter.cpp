@@ -200,6 +200,14 @@ namespace dxvk {
         return Vk::ToNvGpuType(m_vkProperties.deviceType);
     }
 
+    bool NvapiAdapter::HasPciBusInfo() const {
+        return IsVkDeviceExtensionSupported(VK_EXT_PCI_BUS_INFO_EXTENSION_NAME);
+    }
+
+    uint32_t NvapiAdapter::GetPciDomainId() const {
+        return m_vkPciBusProperties.pciDomain;
+    }
+
     uint32_t NvapiAdapter::GetPciBusId() const {
         return m_vkPciBusProperties.pciBus;
     }
@@ -237,10 +245,6 @@ namespace dxvk {
         LUID luid{};
         memcpy(&luid, &m_vkIdProperties.deviceLUID, sizeof(luid));
         return std::make_optional(luid);
-    }
-
-    uint32_t NvapiAdapter::GetLuidNodeMask() const {
-        return m_vkIdProperties.deviceLUIDValid ? m_vkIdProperties.deviceNodeMask : 0;
     }
 
     std::array<uint8_t, NVAPI_UUID_LEN> NvapiAdapter::GetUuid() const {

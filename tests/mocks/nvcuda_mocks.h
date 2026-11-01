@@ -8,5 +8,5 @@ class NvCudaMock final : public trompeloeil::mock_interface<dxvk::NvCuda> {
     IMPLEMENT_CONST_MOCK1(Init);
     IMPLEMENT_CONST_MOCK1(DeviceGetCount);
     IMPLEMENT_CONST_MOCK2(DeviceGet);
-    IMPLEMENT_CONST_MOCK3(DeviceGetLuid);
+    IMPLEMENT_CONST_MOCK3(DeviceGetAttribute);
 };

@@ -131,9 +131,9 @@ namespace dxvk {
     NvapiComputeGpuTopology NvapiAdapterRegistry::DiscoverComputeGpuTopology(std::unique_ptr<NvCuda>& nvcuda) const {
         auto topology = NvapiComputeGpuTopology{};
 
-        // Without any LUID there is nothing to correlate, so do not load CUDA at all
+        // Without any PCI location there is nothing to correlate, so do not load CUDA at all
         if (std::none_of(m_nvapiAdapters.begin(), m_nvapiAdapters.end(),
-                [](const auto& adapter) { return adapter->GetLuid().has_value(); }))
+                [](const auto& adapter) { return adapter->HasPciBusInfo(); }))
             return m_heuristicComputeGpuTopology;
 
         nvcuda = m_resourceFactory.CreateNvCuda();
@@ -161,22 +161,22 @@ namespace dxvk {
                 continue;
             }
 
-            LUID luid{};
-            static_assert(sizeof(luid) == 8);
-            auto nodeMask = 0U;
-            if (auto result = nvcuda->DeviceGetLuid(reinterpret_cast<char*>(&luid), &nodeMask, device); result != CUDA_SUCCESS) {
-                log::info(str::format("Querying LUID of CUDA device ", ordinal, " failed with error: ", result));
+            // Same identity as used for NVML, the PCI function is not reported by CUDA
+            auto domain = 0, bus = 0, slot = 0;
+            if (auto result = nvcuda->DeviceGetAttribute(&domain, CU_DEVICE_ATTRIBUTE_PCI_DOMAIN_ID, device); result != CUDA_SUCCESS
+                || (result = nvcuda->DeviceGetAttribute(&bus, CU_DEVICE_ATTRIBUTE_PCI_BUS_ID, device)) != CUDA_SUCCESS
+                || (result = nvcuda->DeviceGetAttribute(&slot, CU_DEVICE_ATTRIBUTE_PCI_DEVICE_ID, device)) != CUDA_SUCCESS) {
+                log::info(str::format("Querying PCI location of CUDA device ", ordinal, " failed with error: ", result));
                 continue;
             }
 
             std::vector<NvapiAdapter*> matches;
             std::copy_if(m_nvapiAdapters.begin(), m_nvapiAdapters.end(), std::back_inserter(matches),
-                [&luid, nodeMask](const auto& adapter) {
-                    auto adapterLuid = adapter->GetLuid();
-                    return adapterLuid.has_value()
-                        && adapterLuid.value().HighPart == luid.HighPart
-                        && adapterLuid.value().LowPart == luid.LowPart
-                        && adapter->GetLuidNodeMask() == nodeMask;
+                [domain, bus, slot](const auto& adapter) {
+                    return adapter->HasPciBusInfo()
+                        && adapter->GetPciDomainId() == static_cast<uint32_t>(domain)
+                        && adapter->GetPciBusId() == static_cast<uint32_t>(bus)
+                        && adapter->GetPciDeviceId() == static_cast<uint32_t>(slot);
                 });
 
             if (matches.size() != 1) {
