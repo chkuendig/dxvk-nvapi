@@ -25,6 +25,10 @@ namespace {
     void ConfigureVkProps(ConfigureProps vkProps, VkDriverId driverId, const PciLocation& pci) {
         vkProps.props->vendorID = driverId == VK_DRIVER_ID_NVIDIA_PROPRIETARY ? 0x10de : 0x1002;
         vkProps.driverProps->driverID = driverId;
+        // Adapters also have a LUID, which is not used for matching
+        auto luid = LUID{0x04030211, static_cast<LONG>(pci.bus)};
+        memcpy(&vkProps.idProps->deviceLUID, &luid, sizeof(luid));
+        vkProps.idProps->deviceLUIDValid = VK_TRUE;
         if (!vkProps.pciBusInfoProps)
             return;
 
